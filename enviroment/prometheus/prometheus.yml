@@ -1,0 +1,70 @@
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+
+rule_files:
+  - /etc/prometheus/alert.rules.yml
+
+alerting:
+  alertmanagers:
+    - static_configs:
+        - targets: ["alertmanager:9093"]
+
+scrape_configs:
+  # Chính Prometheus
+  - job_name: prometheus
+    static_configs:
+      - targets: ["prometheus:9090"]
+
+  # Grafana internal metrics (optional)
+  - job_name: grafana
+    static_configs:
+      - targets: ["grafana:3000"]
+
+  # Node exporter (Linux host)
+  - job_name: node
+    static_configs:
+      - targets: ["node-exporter:9100"]
+
+  # cAdvisor
+  - job_name: cadvisor
+    static_configs:
+      - targets: ["cadvisor:8080"]
+
+  # Blackbox probe ví dụ endpoint app
+  - job_name: blackbox-http
+    metrics_path: /probe
+    params:
+      module: [http_2xx]
+    static_configs:
+      - targets:
+          - http://app:8080/actuator/health  # đổi theo app của bạn
+          - http://kafka-ui:8080/            # ví dụ
+    relabel_configs:
+      - source_labels: [__address__]
+        target_label: __param_target
+      - source_labels: [__param_target]
+        target_label: instance
+      - target_label: __address__
+        replacement: blackbox:9115
+
+  # Spring Boot Micrometer/Actuator Prometheus
+  - job_name: spring-boot
+    metrics_path: api/v1.0/actuator/prometheus
+    static_configs:
+      - targets: ["localhost:8080"]   # đổi theo service/tên host của app
+
+  # Kafka exporter
+  - job_name: kafka
+    static_configs:
+      - targets: ["kafka-exporter:9308"]
+
+  # Redis exporter
+  - job_name: redis
+    static_configs:
+      - targets: ["redis-exporter:9121"]
+
+  # Postgres exporter
+  - job_name: postgres
+    static_configs:
+      - targets: ["postgres-exporter:9187"]

@@ -1,0 +1,244 @@
+services:
+  back-end:
+    container_name: application-server
+    ports:
+      - "8080:8080"
+    build:
+      context: ../
+      dockerfile: Dockerfile
+    environment:
+      SPRING_PROFILES_ACTIVE: dev
+      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres_01:5432/my_database
+      SPRING_DATASOURCE_USERNAME: postgres
+      SPRING_DATASOURCE_PASSWORD: root
+      TZ: Asia/Ho_Chi_Minh
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+    networks:
+      - monitoring-network
+    depends_on:
+      - postgres
+      - kafka
+
+
+  kafka:
+    image: bitnami/kafka:3.7
+    container_name: kafka
+    ports:
+      - "29092:29092"   # host -> broker
+    environment:
+      # --- KRaft, single node ---
+      KAFKA_CFG_NODE_ID: "1"
+      KAFKA_CFG_PROCESS_ROLES: "broker,controller"
+      KAFKA_CFG_CONTROLLER_QUORUM_VOTERS: "1@kafka:9093"
+      KAFKA_CFG_CONTROLLER_LISTENER_NAMES: "CONTROLLER"
+
+      # --- Listeners ---
+      KAFKA_CFG_LISTENERS: "PLAINTEXT://:9092,CONTROLLER://:9093,PLAINTEXT_HOST://:29092"
+      KAFKA_CFG_ADVERTISED_LISTENERS: "PLAINTEXT://kafka:9092,PLAINTEXT_HOST://localhost:29092"
+      KAFKA_CFG_LISTENER_SECURITY_PROTOCOL_MAP: "PLAINTEXT:PLAINTEXT,CONTROLLER:PLAINTEXT,PLAINTEXT_HOST:PLAINTEXT"
+      KAFKA_CFG_INTER_BROKER_LISTENER_NAME: "PLAINTEXT"
+
+      # --- Storage / logs ---
+      KAFKA_CFG_LOG_DIRS: "/bitnami/kafka/data"
+
+      # --- Tạo topic tự động (tiện dev) ---
+      KAFKA_CFG_AUTO_CREATE_TOPICS_ENABLE: "true"
+
+      # --- BẮT BUỘC: Cluster ID cho KRaft ---
+      KAFKA_KRAFT_CLUSTER_ID: "q1w2e3r4t5y6u7i8o9p0abcd"   # thay bằng UUID ngẫu nhiên (xem bước 2)
+
+    volumes:
+      - kafka_data:/bitnami/kafka
+    restart: unless-stopped
+    networks:
+      - monitoring-network
+
+
+  kafka-ui:
+    image: provectuslabs/kafka-ui:latest
+    container_name: kafka-ui
+    ports:
+      - "9000:8080"
+    environment:
+      KAFKA_CLUSTERS_0_NAME: "local"
+      KAFKA_CLUSTERS_0_BOOTSTRAPSERVERS: "kafka:9092"
+    depends_on:
+      - kafka
+    restart: unless-stopped
+    networks:
+      - monitoring-network
+
+  redis:
+    image: redis:7-alpine
+    container_name: redis
+    ports:
+      - "6379:6379"                          # cân nhắc bind 127.0.0.1, xem lưu ý bên dưới
+    command: [ "redis-server","--appendonly","yes" ]  # KHÔNG có --requirepass
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: [ "CMD", "redis-cli", "ping" ]     # KHÔNG dùng -a password nữa
+      interval: 10s
+      timeout: 3s
+      retries: 5
+    restart: unless-stopped
+    networks:
+      - monitoring-network
+
+  postgres: # Định nghĩa service tên "postgres"
+    image: postgres:16-alpine                                # Image Postgres 16 bản alpine (nhẹ)
+    container_name: postgres_01                               # Đặt tên container để dễ thao tác
+    ports:
+      - "5432:5432"                                # Map cổng: chỉ lắng nghe trên localhost (an toàn dev)
+    environment:
+      POSTGRES_DB: my_database                                  # Tạo sẵn DB tên myapp_db
+      POSTGRES_USER: postgres                              # User ứng dụng
+      POSTGRES_PASSWORD: root                            # Mật khẩu của user trên
+      PGDATA: /var/lib/postgresql/data/pgdata                # (tuỳ chọn) thư mục dữ liệu bên trong container
+    volumes:
+      - pg_data:/var/lib/postgresql/data                     # Volume persist dữ liệu DB (không mất khi restart)
+      - ./data/init:/docker-entrypoint-initdb.d:ro
+      # Mount file SQL init vào thư mục đặc biệt; chỉ chạy lần đầu
+    healthcheck:
+      test: [ "CMD-SHELL","pg_isready -U postgres -d my_database" ]
+      # Healthcheck: kiểm tra DB sẵn sàng bằng pg_isready
+      interval: 10s                                          # Mỗi 10 giây kiểm tra một lần
+      timeout: 5s                                            # Timeout cho mỗi lần kiểm tra
+      retries: 5                                             # Thất bại 5 lần liên tiếp → unhealthy
+    restart: unless-stopped
+    networks:
+      - monitoring-network
+
+  prometheus:
+    image: prom/prometheus:v2.53.0
+    container_name: prometheus
+    command:
+      - --config.file=/etc/prometheus/prometheus.yml
+      - --web.enable-lifecycle
+      - --storage.tsdb.retention.time=15d
+    volumes:
+      - ./prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - ./prometheus/alert.rules.yml:/etc/prometheus/alert.rules.yml:ro
+      - prom_data:/prometheus
+    ports:
+      - "9090:9090"
+    depends_on:
+      - alertmanager
+    networks:
+      - monitoring-network
+
+  alertmanager:
+    image: prom/alertmanager:v0.27.0
+    container_name: alertmanager
+    volumes:
+      - ./alertmanager/alertmanager.yml:/etc/alertmanager/alertmanager.yml:ro
+    ports:
+      - "9093:9093"
+    networks:
+      - monitoring-network
+
+  grafana:
+    image: grafana/grafana:11.1.0
+    container_name: grafana
+    environment:
+      GF_SECURITY_ADMIN_USER: admin
+      GF_SECURITY_ADMIN_PASSWORD: admin123
+    ports:
+      - "3000:3000"
+    volumes:
+      - grafana_data:/var/lib/grafana
+    depends_on:
+      - prometheus
+    networks:
+      - monitoring-network
+    # Lấy metrics tài nguyên container (CPU, RAM, I/O)
+
+  cadvisor:
+    image: gcr.io/cadvisor/cadvisor:v0.49.1
+    container_name: cadvisor
+    ports:
+      - "8081:8080"
+    volumes:
+      - /:/rootfs:ro
+      - /var/run:/var/run:rw
+      - /sys:/sys:ro
+      - /var/lib/docker/:/var/lib/docker:ro
+    networks:
+      - monitoring-network
+
+  # Lấy metrics hệ thống (Linux host). Nếu không phải Linux, bỏ service này.
+  node-exporter:
+    image: prom/node-exporter:v1.8.2
+    container_name: node-exporter
+    ports:
+      - "9100:9100"
+    pid: "host"
+    volumes:
+      - /proc:/host/proc:ro
+      - /sys:/host/sys:ro
+      - /:/rootfs:ro
+    command:
+      - --path.procfs=/host/proc
+      - --path.sysfs=/host/sys
+      - --path.rootfs=/rootfs
+  # Probe HTTP/HTTPS (up/down, latency…)
+    networks:
+      - monitoring-network
+
+  blackbox:
+    image: prom/blackbox-exporter:v0.25.0
+    container_name: blackbox
+    ports:
+      - "9115:9115"
+    networks:
+      - monitoring-network
+
+  # Kafka exporter (consumer lag, broker/topic metrics)
+  kafka-exporter:
+    image: danielqsj/kafka-exporter:v1.7.0
+    container_name: kafka-exporter
+    command:
+      - --kafka.server=kafka:29092
+    ports:
+      - "9308:9308"
+    networks:
+      - monitoring-network
+    depends_on:
+      - kafka
+
+  # Redis exporter
+  redis-exporter:
+    image: oliver006/redis_exporter:v1.62.0
+    container_name: redis-exporter
+    environment:
+      REDIS_ADDR: "redis://redis:6379"   # Đổi host nếu cần
+      # REDIS_PASSWORD: "yourStrongPwd"
+    ports:
+      - "9121:9121"
+    networks:
+      - monitoring-network
+  # Postgres exporter
+  postgres-exporter:
+    image: prometheuscommunity/postgres-exporter:v0.15.0
+    container_name: postgres-exporter
+    environment:
+      DATA_SOURCE_NAME: "postgresql://postgres:root@postgres:5432/my_databbase?sslmode=disable"
+    ports:
+      - "9187:9187"
+    networks:
+      - monitoring-network
+    depends_on:
+      - postgres
+
+volumes:
+  kafka_data:
+  redis_data:
+  pg_data:
+  prom_data:
+  grafana_data:
+
+
+networks:
+  monitoring-network:
+    driver: bridge

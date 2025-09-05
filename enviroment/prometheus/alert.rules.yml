@@ -1,0 +1,63 @@
+groups:
+  - name: infra.rules
+    rules:
+      - alert: InstanceDown
+        expr: up == 0
+        for: 2m
+        labels: { severity: critical }
+        annotations:
+          summary: "{{ $labels.instance }} is down"
+          description: "Prometheus target is down for 2+ minutes."
+
+      - alert: HighNodeCpu
+        expr: 100 - (avg by(instance) (irate(node_cpu_seconds_total{mode="idle"}[5m])) * 100) > 85
+        for: 5m
+        labels: { severity: warning }
+        annotations:
+          summary: "High CPU on {{ $labels.instance }}"
+          description: "CPU usage >85% for 5m."
+
+      - alert: ContainerHighMemory
+        expr: sum by (container_label_com_docker_compose_service) (container_memory_working_set_bytes) / sum by (container_label_com_docker_compose_service) (container_spec_memory_limit_bytes) > 0.9
+        for: 5m
+        labels: { severity: warning }
+        annotations:
+          summary: "Container high memory"
+          description: "Container using >90% memory limit."
+
+  - name: data.rules
+    rules:
+      - alert: RedisDown
+        expr: redis_up == 0
+        for: 2m
+        labels: { severity: critical }
+        annotations:
+          summary: "Redis down"
+          description: "redis_exporter cannot reach Redis."
+
+      - alert: PostgresDown
+        expr: pg_up == 0
+        for: 2m
+        labels: { severity: critical }
+        annotations:
+          summary: "Postgres down"
+          description: "postgres_exporter cannot reach Postgres."
+
+  - name: kafka.rules
+    rules:
+      - alert: KafkaExporterDown
+        expr: up{job="kafka"} == 0
+        for: 2m
+        labels: { severity: warning }
+        annotations:
+          summary: "Kafka exporter down"
+          description: "No metrics from kafka-exporter."
+
+      # Nếu bạn có consumer group: cảnh báo lag tổng > 1000 trong 10m
+      - alert: KafkaConsumerLagHigh
+        expr: sum by (consumergroup) (kafka_consumergroup_lag) > 1000
+        for: 10m
+        labels: { severity: warning }
+        annotations:
+          summary: "Kafka consumer lag high ({{ $labels.consumergroup }})"
+          description: "Consumer lag > 1000 for 10m."

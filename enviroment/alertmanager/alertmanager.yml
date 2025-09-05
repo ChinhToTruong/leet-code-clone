@@ -1,0 +1,11 @@
+route:
+  receiver: "default"
+  repeat_interval: 3h
+
+receivers:
+  - name: "default"
+    # Ví dụ Slack (bật nếu cần):
+    # slack_configs:
+    #   - api_url: https://hooks.slack.com/services/XXX/YYY/ZZZ
+    #     channel: "#alerts"
+    #     send_resolved: true
