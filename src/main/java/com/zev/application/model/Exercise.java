@@ -19,8 +19,8 @@ public class Exercise extends AuditTable{
     @Column(name = "id", nullable = false, unique = true)
     private Long id;
 
-    @Column(name = "user_id")
-    private String user_id;
+    @Column(name = "class_room_id")
+    private String classRoomId;
 
     @Column(name = "tittle")
     private String tittle;

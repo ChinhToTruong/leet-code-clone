@@ -4,7 +4,9 @@ import com.zev.application.common.Constants;
 import com.zev.application.common.ErrorCode;
 import com.zev.application.dto.request.classroom.CreateClassRoomRequest;
 import com.zev.application.dto.request.classroom.UpdateClassRoomRequest;
+import com.zev.application.dto.response.classroom.ClassRoomDetailsResponse;
 import com.zev.application.dto.response.classroom.CreateClassRoomResponse;
+import com.zev.application.dto.response.classroom.GetListClassRoomResponse;
 import com.zev.application.dto.response.classroom.UpdateClassRoomResponse;
 import com.zev.application.exception.BusinessException;
 import com.zev.application.model.AppUser;
@@ -16,8 +18,10 @@ import lombok.RequiredArgsConstructor;
 import org.modelmapper.ModelMapper;
 import org.springframework.stereotype.Service;
 
+import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.stream.Collectors;
 
 @Service
 @RequiredArgsConstructor
@@ -55,5 +59,36 @@ public class ClassRoomService {
         classRoom.setName(request.getName());
         classRoom = classRoomRepository.save(classRoom);
         return modelMapper.map(classRoom, UpdateClassRoomResponse.class);
+    }
+
+    public ClassRoomDetailsResponse getClassRoomById(Long id) throws BusinessException {
+        ClassRoom classRoom = classRoomRepository.findById(id)
+                .orElseThrow(() -> new BusinessException(ErrorCode.CLASS_ROOM_NOT_FOUND));
+
+        ClassRoomDetailsResponse response = modelMapper.map(classRoom, ClassRoomDetailsResponse.class);
+        AppUser teacher = userRepository.findById(classRoom.getTeacherId())
+                .orElseThrow(() -> new BusinessException(ErrorCode.USER_NOT_EXIST, Constants.Message.TEACHER_NOT_FOUND));
+
+        List<ClassRoomDetailsResponse.StudentClassRoomDetailsResponse> students = classRoom.getStudents()
+                .stream()
+                .map(x -> modelMapper.map(x, ClassRoomDetailsResponse.StudentClassRoomDetailsResponse.class))
+                .toList();
+        response.setStudents(students);
+        response.setTeacher(modelMapper.map(teacher, ClassRoomDetailsResponse.TeacherClassRoomDetailsResponse.class));
+        return response;
+
+    }
+
+    public List<GetListClassRoomResponse> getListClassRoom(){
+        Long id = SecurityUtils.getCurrentUserId();
+        return classRoomRepository.findClassRoomsByTeacherId(id)
+                .stream()
+                .map(x -> modelMapper.map(x, GetListClassRoomResponse.class))
+                .collect(Collectors.toList());
+    }
+
+    public String deleteClassRoom(Long id) throws BusinessException {
+        int count = classRoomRepository.deleteClassRoomById(id);
+        return String.format("delete %s records", count);
     }
 }

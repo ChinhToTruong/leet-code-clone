@@ -20,6 +20,8 @@ public enum ErrorCode {
     CLASS_ROOM_NOT_FOUND("6", "Class Room Not Found" ),
     CLASS_ROOM_NAME_ALREADY_EXIST_WITH_THIS_USER("7", "Class Room Name Already Exist with this User" ),
     CLASS_ROOM_NOT_OWNER_BY_CURRENT_USER("8", "Class Room Not Owner By Current User" ),
+    EXERCISE_NOT_FOUND("9", "Exercise Not Found" ),
+
     ;
 
     private final String code;

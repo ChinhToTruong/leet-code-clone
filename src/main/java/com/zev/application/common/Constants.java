@@ -29,4 +29,15 @@ public class Constants {
         String TIME_FORMAT = "HH:mm:ss";
         String DATE_TIME_FORMAT = "yyyy-MM-dd HH:mm:ss";
     }
+
+    public interface ExerciseRank {
+        String HARD = "HARD";
+        String MEDIUM = "MEDIUM";
+        String EASY = "EASY";
+    }
+
+    public interface ExerciseStatus {
+        String DOING = "FAILED";
+        String DONE = "PASSED";
+    }
 }

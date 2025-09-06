@@ -22,4 +22,11 @@ public class UserController {
                 .data(userService.createUserWithRoleAndPermissions(request))
                 .build();
     }
+
+    @PostMapping("/get-details")
+    public DataResponse<?> getDetails() throws Exception {
+        return DataResponse.builder()
+                .data(userService.findUserById())
+                .build();
+    }
 }
